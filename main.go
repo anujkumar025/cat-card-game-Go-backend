@@ -31,16 +31,10 @@ type Manager interface {
 	InsertOrUpdate(Data) error
 }
 
-func getEnvVars() {
-	err := godotenv.Load("Credentials.env")
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
-}
-
 func connectDb() {
-	godotenv.Load("credentials.env")
+	godotenv.Load(".env")
 	mongouri := os.Getenv("MONGOURI")
+	fmt.Println(mongouri)
 	client, err := mongo.NewClient(options.Client().ApplyURI(mongouri))
 	if err != nil {
 		fmt.Println(err)
@@ -91,15 +85,12 @@ func main() {
 		AllowHeaders: "Origin, Content-Type, Accept",
 	}))
 
-	// bigdata := []Data{}
-
 	app.Get("/healthcheck", func(c *fiber.Ctx) error {
 		return c.SendString("OK")
 	})
 
 	app.Post("/updatescore", func(c *fiber.Ctx) error {
 		var newdata Data
-
 		if err := c.BodyParser(&newdata); err != nil {
 			return err
 		}
@@ -113,12 +104,6 @@ func main() {
 	})
 
 	app.Get("/getall", func(c *fiber.Ctx) error {
-		// var newdata Data
-
-		// if err := c.BodyParser(&newdata); err != nil {
-		// 	return err
-		// }
-
 		bigdata, err := Mgr.GetAll()
 		if err != nil {
 			return err
@@ -129,38 +114,58 @@ func main() {
 	log.Fatal(app.Listen(":4000"))
 }
 
-func (mgr *manager) InsertOrUpdate(data Data) error {
-	orgCollection := mgr.connection.Database("cardgame").Collection("users")
+// func (mgr *manager) InsertOrUpdate(data Data) error {
+// 	orgCollection := mgr.connection.Database("cardgame").Collection("users")
+// 	filter := bson.M{"username": data.UserName}
+// 	var existingData Data
+// 	err := orgCollection.FindOne(context.Background(), filter).Decode(&existingData)
+// 	if err == nil {
+// 		if existingData.Score != data.Score {
+// 			update := bson.M{"$set": bson.M{"score": data.Score}}
+// 			_, err := orgCollection.UpdateOne(context.Background(), filter, update)
+// 			if err != nil {
+// 				return err
+// 			}
+// 			return nil
+// 		}
+// 		return nil
+// 	} else if err == mongo.ErrNoDocuments {
+// 		_, err := orgCollection.InsertOne(context.Background(), data)
+// 		if err != nil {
+// 			return err
+// 		}
+// 		return nil
+// 	} else {
+// 		return err
+// 	}
+// }
 
-	// Check if the data.UserName already exists in the database
-	filter := bson.M{"username": data.UserName}
-	var existingData Data
-	err := orgCollection.FindOne(context.Background(), filter).Decode(&existingData)
-	if err == nil {
-		// User exists, compare scores
-		if existingData.Score != data.Score {
-			// Scores are different, update the score in the database
-			update := bson.M{"$set": bson.M{"score": data.Score}}
+
+func (mgr *manager) InsertOrUpdate(data Data) error {
+    orgCollection := mgr.connection.Database("cardgame").Collection("users")
+    filter := bson.M{"username": data.UserName}
+    var existingData Data
+    err := orgCollection.FindOne(context.Background(), filter).Decode(&existingData)
+    if err == nil{
+		if data.Score > existingData.Score{
+			update := bson.M{"$inc": bson.M{"score": 1}}
 			_, err := orgCollection.UpdateOne(context.Background(), filter, update)
 			if err != nil {
 				return err
 			}
-			return nil
-		}
-		// Scores are the same, do nothing
-		return nil
-	} else if err == mongo.ErrNoDocuments {
-		// User does not exist, insert the data into the database
-		_, err := orgCollection.InsertOne(context.Background(), data)
-		if err != nil {
-			return err
 		}
 		return nil
-	} else {
-		// Error occurred while querying the database
-		return err
-	}
+    } else if err == mongo.ErrNoDocuments {
+        _, err := orgCollection.InsertOne(context.Background(), data)
+        if err != nil {
+            return err
+        }
+        return nil
+    } else {
+        return err
+    }
 }
+
 
 func (mgr *manager) Insert(data interface{}) error {
 	orgCollection := mgr.connection.Database("cardgame").Collection("users")
@@ -172,7 +177,7 @@ func (mgr *manager) Insert(data interface{}) error {
 func (mgr *manager) UpdateData(data Data) error {
 	orgCollection := mgr.connection.Database("cardgame").Collection("users")
 
-	filter := bson.M{"userName": data.UserName} // Filter by username
+	filter := bson.M{"userName": data.UserName}
 	update := bson.M{"$set": bson.M{"score": data.Score}}
 
 	_, err := orgCollection.UpdateOne(context.TODO(), filter, update)
@@ -182,11 +187,8 @@ func (mgr *manager) UpdateData(data Data) error {
 func (mgr *manager) GetAll() ([]Data, error) {
 	orgCollection := mgr.connection.Database("cardgame").Collection("users")
 
-	// Define sorting and limiting options
 	opts := options.Find().SetSort(bson.D{{"score", -1}}).SetLimit(5)
 
-	// fmt.Println("ok here")
-	// Find all data sorted by score in descending order and limit to 10 entries
 	cursor, err := orgCollection.Find(context.Background(), bson.M{}, opts)
 	if err != nil {
 		return nil, err
